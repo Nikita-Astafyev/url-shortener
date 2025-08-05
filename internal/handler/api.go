@@ -1,7 +1,11 @@
 package handler
 
 import (
+	"database/sql"
+	"log"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/Nikita-Astafyev/url-shortener/internal/storage"
 )
@@ -14,7 +18,18 @@ func NewURLHandler(storage storage.URLStorage) *URLHandler {
 	return &URLHandler{storage: storage}
 }
 
+func isValidURL(rawUrl string) bool {
+	_, err := url.ParseRequestURI(rawUrl)
+	return err == nil
+}
+
 func (h *URLHandler) CreateShortURL(w http.ResponseWriter, r *http.Request) {
+	url := r.FormValue("url")
+	if !isValidURL(url) {
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+
 	originalURL := r.FormValue("url")
 	shortURL, err := h.storage.CreateURL(originalURL)
 	if err != nil {
@@ -25,12 +40,28 @@ func (h *URLHandler) CreateShortURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandler) Redirect(w http.ResponseWriter, r *http.Request) {
-	shortURL := r.URL.Path[1:]
-	originalURL, err := h.storage.GetOriginalURL(shortURL)
-	if err != nil {
-		http.Error(w, "URL not found", http.StatusNotFound)
+	shortURL := strings.TrimPrefix(r.URL.Path, "/r/")
+	if shortURL == "" {
+		http.Error(w, "Short URL is required", http.StatusBadRequest)
 		return
 	}
-	h.storage.IncrementVisits(shortURL)
+
+	originalURL, err := h.storage.GetOriginalURL(shortURL)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "URL not found", http.StatusNotFound)
+		} else {
+			log.Printf("DB error: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	go func() {
+		if err := h.storage.IncrementVisits(shortURL); err != nil {
+			log.Printf("Failed to increment visits: %v", err)
+		}
+	}()
+
 	http.Redirect(w, r, originalURL, http.StatusFound)
 }
