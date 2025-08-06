@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
@@ -41,14 +42,10 @@ func (h *URLHandler) CreateShortURL(w http.ResponseWriter, r *http.Request) {
 
 func (h *URLHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 	shortURL := strings.TrimPrefix(r.URL.Path, "/r/")
-	if shortURL == "" {
-		http.Error(w, "Short URL is required", http.StatusBadRequest)
-		return
-	}
-
 	originalURL, err := h.storage.GetOriginalURL(shortURL)
+
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "URL not found", http.StatusNotFound)
 		} else {
 			log.Printf("DB error: %v", err)

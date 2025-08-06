@@ -10,7 +10,7 @@ type DBConfig struct {
 
 func GetDBConfig() DBConfig {
 	return DBConfig{
-		Host:     "localhost",
+		Host:     "postgres",
 		Port:     "5432",
 		User:     "user",
 		Password: "password",
